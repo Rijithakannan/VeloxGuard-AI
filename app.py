@@ -110,7 +110,7 @@ if st.button("EXECUTE SCAN"):
 
 # --- Section 2: AI-Powered Visual Threat Analysis (OCR) ---
 st.write("---")
-st.subheader("📸 Visual Threat Scan (Image OCR)")
+st.subheader("📸 Visual Threat Scan ")
 uploaded_image = st.file_uploader("Upload a screenshot of a suspicious email or website", type=['png', 'jpg', 'jpeg'])
 
 if st.button("SCAN SCREENSHOT"):
@@ -142,3 +142,4 @@ if st.button("SCAN SCREENSHOT"):
 
 st.write("---")
 st.caption("© 2025 VeloxGuard | Project Presentation Mode | GitHub Sync Enabled")
+
