@@ -1,9 +1,25 @@
 import pandas as pd
 import streamlit as st
 import re
+import shutil
+import pytesseract
 from sklearn.ensemble import RandomForestClassifier
+from PIL import Image
 
-# 1. Page Configuration
+# 1. Tesseract OCR Configuration (Handle Local Windows vs Cloud/Linux)
+tesseract_path = shutil.which("tesseract")
+if not tesseract_path:
+    # If not found in system PATH, try the default Windows path
+    tesseract_path = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+pytesseract.pytesseract.tesseract_cmd = tesseract_path
+
+# --- ADDED: OCR URL Extraction Logic ---
+def extract_urls_from_text(text):
+    """Detects URLs within text using Regex patterns."""
+    url_pattern = r'https?://(?:www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b(?:[-a-zA-Z0-9()@:%_\+.~#?&//=]*)'
+    return re.findall(url_pattern, text)
+
+# 2. Page Configuration
 st.set_page_config(page_title="VeloxGuard AI", page_icon="🛡️", layout="wide")
 
 # Modern Dark-Theme Design
@@ -18,7 +34,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# 2. Feature Extraction (Strictly mapped to dataset.csv logic)
+# 3. Feature Extraction (Strictly mapped to dataset.csv logic)
 def extract_features(url):
     features = []
     ip_pattern = r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}'
@@ -34,7 +50,7 @@ def extract_features(url):
     else: features.append(-1)
     return features
 
-# 3. Model Training
+# 4. Model Training
 @st.cache_resource
 def train_velox_model():
     try:
@@ -51,7 +67,7 @@ def train_velox_model():
 
 model = train_velox_model()
 
-# 4. Sidebar & Presentation Info
+# 5. Sidebar & Presentation Info
 with st.sidebar:
     st.image("https://img.icons8.com/fluency/144/shield.png", width=80)
     st.title("VeloxGuard Control")
@@ -64,12 +80,11 @@ with st.sidebar:
     st.write("- **Algorithm:** Random Forest")
     st.write("- **Dataset:** UCI Repository")
 
-# 5. Main Interface
+# 6. Main Interface
 st.markdown("<h1 style='text-align: center; color: #ff4b4b;'>🛡️ VELOXGUARD AI</h1>", unsafe_allow_html=True)
 st.markdown("<p style='text-align: center; color: #808495;'>Cloud-Integrated Cyber Threat Detection System</p>", unsafe_allow_html=True)
 
-
-
+# --- Section 1: Manual URL Scan ---
 url_input = st.text_input("🔗 Enter URL for deep heuristic analysis:", placeholder="https://secure-login.com")
 
 if st.button("EXECUTE SCAN"):
@@ -92,6 +107,38 @@ if st.button("EXECUTE SCAN"):
                 st.info(f"**Threat Probability:** {prob[1]*100:.2f}%")
     elif not url_input:
         st.warning("Please provide a URL to scan.")
+
+# --- Section 2: AI-Powered Visual Threat Analysis (OCR) ---
+st.write("---")
+st.subheader("📸 Visual Threat Scan ")
+uploaded_image = st.file_uploader("Upload a screenshot of a suspicious email or website", type=['png', 'jpg', 'jpeg'])
+
+if st.button("SCAN SCREENSHOT"):
+    if model is not None and uploaded_image:
+        try:
+            with st.spinner("Extracting URLs from image..."):
+                img = Image.open(uploaded_image)
+                # Perform OCR using the configured path
+                extracted_text = pytesseract.image_to_string(img)
+                found_urls = extract_urls_from_text(extracted_text)
+                
+                if found_urls:
+                    st.success(f"Detected {len(found_urls)} URL(s) in screenshot.")
+                    for url in found_urls:
+                        st.markdown(f"**Analyzing:** `{url}`")
+                        features = extract_features(url)
+                        prediction = model.predict([features])[0]
+                        if prediction == -1:
+                            st.write("✅ Status: **SECURE**")
+                        else:
+                            st.write("🚨 Status: **MALICIOUS**")
+                else:
+                    st.warning("No URLs detected in the image. Ensure the text is clear.")
+        except Exception as e:
+            st.error(f"OCR Error: {e}")
+            st.info("Note: Ensure Tesseract-OCR is installed on your system.")
+    elif not uploaded_image:
+        st.warning("Please upload an image first.")
 
 st.write("---")
 st.caption("© 2025 VeloxGuard | Project Presentation Mode | GitHub Sync Enabled")
