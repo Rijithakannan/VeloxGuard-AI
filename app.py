@@ -110,7 +110,7 @@ if st.button("EXECUTE SCAN"):
 
 # --- Section 2: AI-Powered Visual Threat Analysis (OCR) ---
 st.write("---")
-st.subheader("📸 Visual Threat Scan ")
+st.subheader("📸 Visual Threat Scan (Image OCR)")
 uploaded_image = st.file_uploader("Upload a screenshot of a suspicious email or website", type=['png', 'jpg', 'jpeg'])
 
 if st.button("SCAN SCREENSHOT"):
