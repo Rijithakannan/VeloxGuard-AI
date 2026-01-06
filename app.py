@@ -20,21 +20,28 @@ st.markdown("""
 
 # 2. Feature Extraction (Strictly mapped to dataset.csv logic)
 def extract_features(url):
+    """
+    Values based on dataset.csv:
+    1  = Legitimate/Safe
+    0  = Suspicious
+    -1 = Phishing/Malicious
+    """
     features = []
-    # Feature 1: IP Address
+    
+    # Feature 1: IP Address (having_IPhaving_IP_Address)
     ip_pattern = r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}'
     features.append(-1 if re.search(ip_pattern, url) else 1) 
     
-    # Feature 2: URL Length
+    # Feature 2: URL Length (URLURL_Length)
     url_len = len(url)
     if url_len < 54: features.append(1)
     elif 54 <= url_len <= 75: features.append(0)
     else: features.append(-1)
     
-    # Feature 3: @ Symbol
+    # Feature 3: @ Symbol (having_At_Symbol)
     features.append(-1 if "@" in url else 1)
     
-    # Feature 4: Sub Domain (Dots)
+    # Feature 4: Sub Domain (having_Sub_Domain)
     dot_count = url.count('.')
     if dot_count <= 1: features.append(1)
     elif dot_count == 2: features.append(0)
@@ -46,11 +53,19 @@ def extract_features(url):
 @st.cache_resource
 def train_velox_model():
     try:
+        # Loading the provided dataset.csv
         df = pd.read_csv("dataset.csv")
-        # Using the specific 4 features processed in extract_features
-        features_to_use = ['having_IPhaving_IP_Address', 'URLURL_Length', 'having_At_Symbol', 'having_Sub_Domain']
+        
+        # Using specific columns found in the file
+        features_to_use = [
+            'having_IPhaving_IP_Address', 
+            'URLURL_Length', 
+            'having_At_Symbol', 
+            'having_Sub_Domain'
+        ]
         X = df[features_to_use]
         y = df['Result'] 
+        
         model = RandomForestClassifier(n_estimators=100, random_state=42)
         model.fit(X, y)
         return model
@@ -71,13 +86,13 @@ with st.sidebar:
     st.write("---")
     st.markdown("### Model Diagnostics")
     st.write("- **Algorithm:** Random Forest")
-    st.write("- **Dataset:** UCI Repository")
+    st.write("- **Dataset:** UCI Repository (dataset.csv)")
 
 # 5. Main Interface
 st.markdown("<h1 style='text-align: center; color: #ff4b4b;'>🛡️ VELOXGUARD AI</h1>", unsafe_allow_html=True)
 st.markdown("<p style='text-align: center; color: #808495;'>Cloud-Integrated Cyber Threat Detection System</p>", unsafe_allow_html=True)
 
-url_input = st.text_input("🔗 Enter URL for deep heuristic analysis:", placeholder="https://secure-login.com")
+url_input = st.text_input("🔗 Enter URL for deep heuristic analysis:", placeholder="https://www.google.com")
 
 if st.button("EXECUTE SCAN"):
     if model is not None and url_input:
@@ -89,9 +104,8 @@ if st.button("EXECUTE SCAN"):
             st.write("---")
             col1, col2 = st.columns(2)
             
-            # --- FIXED DETECTION LOGIC START ---
-            # Result 1 = Legitimate (SECURE)
-            # Result -1 = Phishing (MALICIOUS)
+            # --- FIXED DETECTION LOGIC ---
+            # Based on dataset.csv labels: 1 = Legitimate (SECURE), -1 = Phishing (MALICIOUS)
             if prediction == 1: 
                 col1.metric("Status", "SECURE", delta="Normal")
                 st.success("✅ **Legitimate Site.** No malicious patterns found.")
@@ -99,10 +113,8 @@ if st.button("EXECUTE SCAN"):
             else: 
                 col1.metric("Status", "MALICIOUS", delta="-Danger", delta_color="inverse")
                 st.error("🚨 **Warning: Phishing Link Detected!**")
-                # Class -1 is at index 0 in predict_proba
+                # Since classes are [-1, 1], index 0 is Phishing (-1) and index 1 is Legitimate (1)
                 st.info(f"**Threat Probability:** {prob[0]*100:.2f}%")
-            # --- FIXED DETECTION LOGIC END ---
-
     elif not url_input:
         st.warning("Please provide a URL to scan.")
 
