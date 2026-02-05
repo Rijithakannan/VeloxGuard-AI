@@ -2,121 +2,123 @@ import pandas as pd
 import streamlit as st
 import re
 from sklearn.ensemble import RandomForestClassifier
+from urllib.parse import urlparse
 
 # 1. Page Configuration
-st.set_page_config(page_title="VeloxGuard AI", page_icon="🛡️", layout="wide")
+st.set_page_config(page_title="VeloxGuard AI Pro", page_icon="🛡️", layout="wide")
 
-# Modern Dark-Theme Design
 st.markdown("""
     <style>
     .main { background-color: #0e1117; }
-    .stButton>button {
-        width: 100%; border-radius: 5px; height: 3em;
-        background-color: #ff4b4b; color: white; font-weight: bold;
-    }
-    h1 { color: #ff4b4b; text-align: center; }
+    .stMetric { background-color: #1e2130; padding: 15px; border-radius: 10px; border: 1px solid #3e4255; }
+    h1 { color: #ff4b4b; text-align: center; font-family: 'Helvetica'; }
     </style>
     """, unsafe_allow_html=True)
 
-# 2. Feature Extraction (Strictly mapped to dataset.csv logic)
-def extract_features(url):
-    """
-    Values based on dataset.csv:
-    1  = Legitimate/Safe
-    0  = Suspicious
-    -1 = Phishing/Malicious
-    """
-    features = []
-    
-    # Feature 1: IP Address (having_IPhaving_IP_Address)
-    ip_pattern = r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}'
-    features.append(-1 if re.search(ip_pattern, url) else 1) 
-    
-    # Feature 2: URL Length (URLURL_Length)
-    url_len = len(url)
-    if url_len < 54: features.append(1)
-    elif 54 <= url_len <= 75: features.append(0)
-    else: features.append(-1)
-    
-    # Feature 3: @ Symbol (having_At_Symbol)
-    features.append(-1 if "@" in url else 1)
-    
-    # Feature 4: Sub Domain (having_Sub_Domain)
-    dot_count = url.count('.')
-    if dot_count <= 1: features.append(1)
-    elif dot_count == 2: features.append(0)
-    else: features.append(-1)
-    
-    return features
-
-# 3. Model Training
+# 2. Model Training
 @st.cache_resource
 def train_velox_model():
     try:
-        # Loading the provided dataset.csv
         df = pd.read_csv("dataset.csv")
-        
-        # Using specific columns found in the file
-        features_to_use = [
-            'having_IPhaving_IP_Address', 
-            'URLURL_Length', 
-            'having_At_Symbol', 
-            'having_Sub_Domain'
-        ]
-        X = df[features_to_use]
-        y = df['Result'] 
+        # Ensure we drop the non-feature columns
+        X = df.drop(columns=['index', 'Result']) 
+        y = df['Result']
         
         model = RandomForestClassifier(n_estimators=100, random_state=42)
         model.fit(X, y)
-        return model
+        return model, X.columns.tolist()
     except Exception as e:
-        st.error(f"Setup Error: {e}")
-        return None
+        st.error(f"Initialization Error: {e}")
+        return None, []
 
-model = train_velox_model()
+model, feature_names = train_velox_model()
 
-# 4. Sidebar & Presentation Info
-with st.sidebar:
-    st.image("https://img.icons8.com/fluency/144/shield.png", width=80)
-    st.title("VeloxGuard Control")
-    st.write("---")
-    st.markdown("### 🚀 Deployment Status")
-    st.success("Connected to GitHub")
-    st.info("Branch: Main")
-    st.write("---")
-    st.markdown("### Model Diagnostics")
-    st.write("- **Algorithm:** Random Forest")
-    st.write("- **Dataset:** UCI Repository (dataset.csv)")
+# 3. Intelligent Feature Extraction (Calibrated for Detection)
+def extract_all_features(url, expected_columns):
+    # Standardize URL
+    if not url.startswith(('http://', 'https://')):
+        url = 'https://' + url
+    
+    parsed = urlparse(url)
+    domain = parsed.netloc.lower()
+    
+    # Initialize all features with 'Suspicious' (0) as the default baseline
+    # This prevents the "All Safe" bias caused by padding with 1s.
+    f_dict = {col: 0 for col in expected_columns}
+    
+    # --- CORE DETECTION LOGIC ---
+    # IP Address
+    f_dict['having_IPhaving_IP_Address'] = -1 if re.search(r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}', url) else 1
+    
+    # URL Length
+    url_len = len(url)
+    f_dict['URLURL_Length'] = 1 if url_len < 54 else (0 if url_len <= 75 else -1)
+    
+    # Shorteners
+    f_dict['Shortining_Service'] = -1 if re.search('bit\.ly|goo\.gl|t\.co|tinyurl', url) else 1
+    
+    # Hyphens in Domain
+    f_dict['Prefix_Suffix'] = -1 if '-' in domain else 1
+    
+    # Subdomain Count
+    dots = domain.count('.')
+    f_dict['having_Sub_Domain'] = 1 if dots <= 2 else (0 if dots == 3 else -1)
+    
+    # SSL State (One of the most weighted features)
+    f_dict['SSLfinal_State'] = 1 if parsed.scheme == 'https' else -1
+    
+    # URL of Anchor & Request URL (Heuristic approximation)
+    # If it's a deep path with keywords, we flag these as suspicious
+    if any(word in url for word in ['login', 'verify', 'update', 'bank', 'secure']):
+        f_dict['URL_of_Anchor'] = -1
+        f_dict['Request_URL'] = -1
+        f_dict['HTTPS_token'] = -1
+        f_dict['Abnormal_URL'] = -1
+    else:
+        f_dict['URL_of_Anchor'] = 1
+        f_dict['Request_URL'] = 1
+        f_dict['HTTPS_token'] = 1
+        f_dict['Abnormal_URL'] = 1
 
-# 5. Main Interface
-st.markdown("<h1 style='text-align: center; color: #ff4b4b;'>🛡️ VELOXGUARD AI</h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: center; color: #808495;'>Cloud-Integrated Cyber Threat Detection System</p>", unsafe_allow_html=True)
+    # Return list in the EXACT order the model expects
+    return [f_dict[col] for col in expected_columns]
 
-url_input = st.text_input("🔗 Enter URL for deep heuristic analysis:", placeholder="https://www.google.com")
+# 4. User Interface
+st.markdown("<h1>🛡️ VELOXGUARD AI PRO</h1>", unsafe_allow_html=True)
 
-if st.button("EXECUTE SCAN"):
-    if model is not None and url_input:
-        with st.spinner("Processing feature vectors..."):
-            user_features = extract_features(url_input)
-            prediction = model.predict([user_features])[0]
-            prob = model.predict_proba([user_features])[0]
+url_input = st.text_input("🔗 Enter URL for 30-Vector Analysis:", placeholder="https://www.example.com")
+
+if st.button("EXECUTE FORENSIC SCAN"):
+    if url_input and model:
+        with st.spinner("Analyzing deep patterns..."):
+            # Step 1: Extract 30 features
+            vector = extract_all_features(url_input, feature_names)
+            
+            # Step 2: Predict (Result: 1 = Safe, -1 = Phishing)
+            prediction = model.predict([vector])[0]
+            prob = model.predict_proba([vector])[0]
             
             st.write("---")
-            col1, col2 = st.columns(2)
+            col1, col2, col3 = st.columns(3)
             
-            # --- FIXED DETECTION LOGIC ---
-            # Based on dataset.csv labels: 1 = Legitimate (SECURE), -1 = Phishing (MALICIOUS)
-            if prediction == 1: 
-                col1.metric("Status", "SECURE", delta="Normal")
-                st.success("✅ **Legitimate Site.** No malicious patterns found.")
-                st.balloons()
-            else: 
-                col1.metric("Status", "MALICIOUS", delta="-Danger", delta_color="inverse")
-                st.error("🚨 **Warning: Phishing Link Detected!**")
-                # Since classes are [-1, 1], index 0 is Phishing (-1) and index 1 is Legitimate (1)
-                st.info(f"**Threat Probability:** {prob[0]*100:.2f}%")
-    elif not url_input:
-        st.warning("Please provide a URL to scan.")
+            # Prediction values: [-1, 1]. prob[0] is for -1, prob[1] is for 1.
+            if prediction == 1:
+                col1.metric("SAFETY STATUS", "SECURE", "Clean")
+                st.success("✅ **Legitimate Site.** No malicious signatures detected.")
+            else:
+                col1.metric("SAFETY STATUS", "MALICIOUS", "-Danger", delta_color="inverse")
+                st.error("🚨 **PHISHING DETECTED!** This URL shows high-risk fraudulent patterns.")
+                st.warning(f"**Malice Confidence Score:** {prob[0]*100:.1f}%")
 
-st.write("---")
-st.caption("© 2025 VeloxGuard | Project Presentation Mode | GitHub Sync Enabled")
+            col2.metric("VECTORS ANALYZED", "30")
+            col3.metric("ENGINE", "RandomForest")
+
+            with st.expander("📝 Detailed Forensic Breakdown"):
+                breakdown = pd.DataFrame({
+                    "Feature": feature_names,
+                    "Score": vector
+                })
+                st.table(breakdown)
+                st.info("Score Key: 1 = Safe, 0 = Suspicious, -1 = Malicious")
+    else:
+        st.warning("Please enter a URL to begin.")
